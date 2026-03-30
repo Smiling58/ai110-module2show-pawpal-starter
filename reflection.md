@@ -6,6 +6,14 @@
 
 - Briefly describe your initial UML design.
 - What classes did you include, and what responsibilities did you assign to each?
+- UML overview: a class diagram centered on a Scheduler that reads from Owner, Pet, and Task objects and produces a DailyPlan. Key relationships: Scheduler uses Owner and Pet as context, reads a list of Tasks, and outputs a DailyPlan containing ordered scheduled tasks and skipped tasks with reasoning.
+
+- Classes and responsibilities:
+    - Owner: holds the pet owner's name, daily time budget (available_minutes), and preferences (e.g., prefers morning tasks). Sets the time constraint the Scheduler must respect.
+    - Pet: holds the pet's name, species, age, and health notes. Used by the Scheduler to determine which tasks are relevant or mandatory.
+    - Task: represents a single care activity (walk, feeding, meds, grooming, enrichment). Stores title, category, duration_minutes, priority (low/medium/high), is_mandatory flag, and preferred_time_of_day. Mandatory tasks (e.g., medications) are always scheduled regardless of time budget.
+    - DailyPlan: the output of the Scheduler. Holds an ordered list of scheduled tasks, a list of skipped tasks, and the total duration. Provides an explain() method that describes why each task was included or skipped.
+    - Scheduler: the core logic layer. Takes an Owner, Pet, and list of Tasks; filters by time budget; always includes mandatory tasks; sorts remaining tasks by priority; and produces a DailyPlan with reasoning.
 
 **b. Design changes**
 
