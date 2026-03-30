@@ -41,6 +41,33 @@ Beyond the basic priority-and-time-budget scheduler, the system includes four ad
 - **Recurring task advancement** — `Task.mark_complete()` returns a new `Task` instance due on the next occurrence (today + 1 day for daily, + 7 days for weekly). `Scheduler.advance_recurring()` marks the task and registers the next one on the pet automatically.
 - **Conflict detection** — `Scheduler.detect_conflicts()` warns when two or more tasks for the same pet share the same time-of-day slot (e.g., two "morning" tasks). Returns warning strings rather than raising exceptions so the app can surface them without crashing.
 
+## Testing PawPal+
+
+Run the full test suite with:
+
+```bash
+python -m pytest
+```
+
+### What the tests cover
+
+| Area | Tests |
+|---|---|
+| **Recurrence logic** | Daily tasks produce a next task due tomorrow; weekly tasks due in 7 days; `as needed` tasks return `None` and nothing is appended to the pet |
+| **Sorting correctness** | `sort_by_priority` orders `high → medium → low`; `sort_by_time` orders `morning → afternoon → evening → any`; equal-priority tasks break ties by time-of-day |
+| **Conflict detection** | Duplicate non-`any` slots on the same pet trigger a warning; `any`-time tasks never conflict; conflicts do not cross pets |
+| **Scheduling — happy paths** | All tasks fit when budget is sufficient; mandatory tasks always appear even when they exceed budget; completed tasks are excluded |
+| **Scheduling — edge cases** | Zero-budget schedules only mandatory tasks; pet with no tasks returns empty plan; owner with no pets returns empty plan; oversized optional tasks go to `skipped_tasks` |
+| **Filter tasks** | `pet_name` filter returns only that pet's tasks; `completed=False` returns only pending tasks |
+
+**23 tests — all passing.**
+
+### Confidence Level
+
+★★★★☆ (4/5)
+
+The core scheduling logic — mandatory-first, priority sorting, recurrence, and conflict detection — is thoroughly covered and all tests pass. One star is held back because the greedy packing algorithm is order-dependent (task insertion order affects what gets scheduled when the budget is tight), and the UI layer has no automated tests.
+
 ### Suggested workflow
 
 1. Read the scenario carefully and identify requirements and edge cases.

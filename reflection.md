@@ -35,8 +35,15 @@ Yes, several changes were made during skeleton review before implementation bega
 
 **a. Constraints and priorities**
 
-- What constraints does your scheduler consider (for example: time, priority, preferences)?
-- How did you decide which constraints mattered most?
+The scheduler considers three constraints:
+
+1. **Mandatory flag** — tasks marked `is_mandatory=True` (e.g., medications) are always scheduled regardless of available time. This is a hard constraint: the scheduler commits to these tasks first and deducts their duration from the budget before evaluating anything else.
+
+2. **Time budget** — the owner's `available_minutes` caps how much optional work can fit in the day. After mandatory tasks are reserved, the remaining budget is filled greedily: tasks are added in priority order until no more will fit.
+
+3. **Priority** — optional tasks are sorted high → medium → low before the greedy fill. A secondary sort on `preferred_time_of_day` (morning → afternoon → evening → any) breaks ties so earlier-in-the-day tasks are preferred when priority is equal.
+
+The mandatory flag was treated as most important because missing a pet's medication has real health consequences — no time pressure should ever drop it. Time budget was ranked second because it is the owner's primary real-world constraint. Priority came third because it is a soft preference: a low-priority task that fits should still be included rather than dropped for no reason.
 
 **b. Tradeoffs**
 
