@@ -17,8 +17,17 @@
 
 **b. Design changes**
 
-- Did your design change during implementation?
-- If yes, describe at least one change and why you made it.
+Yes, several changes were made during skeleton review before implementation began:
+
+1. **Removed `Owner.pets` and `add_pet()`** — the initial design gave `Owner` a list of pets and a method to add them, but `Scheduler` was already taking a single `Pet` directly. The two approaches conflicted and `Owner.pets` was never used by anything. Removing it keeps the data flow simple: one owner, one pet, one plan per run.
+
+2. **Removed `Scheduler.explain_reasoning()`** — this duplicated the responsibility of `DailyPlan.explain()`. Since `DailyPlan` already holds both `scheduled_tasks` and `skipped_tasks`, it has everything needed to explain itself. Keeping both would have created ambiguity about which method to call and where reasoning logic lives.
+
+3. **Removed `DailyPlan.total_duration` as a stored field** — storing a raw `int` that had to be kept in sync with `scheduled_tasks` was a bug waiting to happen. Replaced it with a single source of truth: `total_time()` computes the sum on demand from `scheduled_tasks`.
+
+4. **Added `Scheduler._separate_mandatory()`** — the initial design had no explicit step for isolating mandatory tasks before time filtering. Without this, a greedy time filter could drop a medication task. The new stub enforces the correct order: always commit mandatory tasks first, then fill remaining budget with optional tasks sorted by priority.
+
+5. **Added `remaining_minutes` parameter to `filter_by_time()`** — the original signature only took a task list, with no way to know the budget after mandatory tasks are already reserved. The updated signature makes the available time budget explicit so the method can be called correctly after mandatory tasks are committed.
 
 ---
 
