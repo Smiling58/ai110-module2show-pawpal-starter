@@ -40,8 +40,9 @@ Yes, several changes were made during skeleton review before implementation bega
 
 **b. Tradeoffs**
 
-- Describe one tradeoff your scheduler makes.
-- Why is that tradeoff reasonable for this scenario?
+The conflict detector flags tasks that share the same `preferred_time_of_day` slot (e.g., two "morning" tasks) as a conflict, even if the owner has enough total time to fit both. It does not check whether the tasks actually overlap in wall-clock time — it only compares the slot label.
+
+This is a reasonable tradeoff for this scenario because tasks don't have fixed start times; they only have a preferred period. A true overlap check would require assigning start times first, which adds significant complexity (a scheduling sub-problem). For a daily care planner, a soft warning — "you have two morning tasks" — is more useful than a hard block, since the owner can simply do one after the other. The warning surfaces potential crowding without preventing valid schedules.
 
 ---
 

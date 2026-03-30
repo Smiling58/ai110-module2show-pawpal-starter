@@ -1,5 +1,6 @@
+from collections import defaultdict
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, timedelta
 from typing import Literal
 
 PRIORITY_RANK = {"high": 3, "medium": 2, "low": 1}
@@ -14,12 +15,30 @@ class Task:
     priority: Literal["low", "medium", "high"]
     is_mandatory: bool = False
     preferred_time_of_day: Literal["morning", "afternoon", "evening", "any"] = "any"
-    frequency: str = "daily"  # e.g. "daily", "weekly", "as needed"
+    frequency: str = "daily"  # "daily", "weekly", "as needed"
     completed: bool = False
+    due_date: str = ""  # ISO date string, e.g. "2026-03-30"
 
-    def mark_complete(self) -> None:
-        """Mark this task as completed."""
+    def mark_complete(self) -> "Task | None":
+        """Mark this task done and return a new Task for the next occurrence, or None if non-recurring."""
         self.completed = True
+        if self.frequency == "daily":
+            next_date = date.today() + timedelta(days=1)
+        elif self.frequency == "weekly":
+            next_date = date.today() + timedelta(weeks=1)
+        else:
+            return None  # "as needed" — no automatic next occurrence
+        return Task(
+            title=self.title,
+            category=self.category,
+            duration_minutes=self.duration_minutes,
+            priority=self.priority,
+            is_mandatory=self.is_mandatory,
+            preferred_time_of_day=self.preferred_time_of_day,
+            frequency=self.frequency,
+            completed=False,
+            due_date=str(next_date),
+        )
 
     def is_high_priority(self) -> bool:
         """Return True if the task's priority is high."""
@@ -28,9 +47,10 @@ class Task:
     def summary(self) -> str:
         """Return a single-line human-readable description of the task."""
         mandatory_tag = " [mandatory]" if self.is_mandatory else ""
+        due_tag = f" (due {self.due_date})" if self.due_date else ""
         return (
             f"{self.title} ({self.category}) — "
-            f"{self.duration_minutes} min, {self.priority} priority{mandatory_tag}"
+            f"{self.duration_minutes} min, {self.priority} priority{mandatory_tag}{due_tag}"
         )
 
 
@@ -88,18 +108,15 @@ class DailyPlan:
     def explain(self) -> str:
         """Produce a readable summary of what was scheduled and why."""
         lines = [f"Daily plan for {self.date}", f"Total time: {self.total_time()} min\n"]
-
         if self.scheduled_tasks:
             lines.append("Scheduled:")
             for t in self.scheduled_tasks:
                 reason = "mandatory" if t.is_mandatory else f"{t.priority} priority"
                 lines.append(f"  + {t.title} ({t.duration_minutes} min) — included: {reason}")
-
         if self.skipped_tasks:
             lines.append("\nSkipped:")
             for t in self.skipped_tasks:
                 lines.append(f"  - {t.title} ({t.duration_minutes} min) — not enough time remaining")
-
         return "\n".join(lines)
 
 
@@ -108,20 +125,19 @@ class Scheduler:
         self.owner = owner
 
     def generate_plan(self) -> DailyPlan:
-        """Build a DailyPlan by scheduling mandatory tasks first, then filling by priority."""
+        """Build a DailyPlan: mandatory tasks first, then optional tasks by priority within time budget."""
         today = str(date.today())
         plan = DailyPlan(date=today)
         budget = self.owner.available_minutes
 
-        all_tasks = self.owner.get_all_tasks()
-        mandatory, optional = self._separate_mandatory(all_tasks)
+        # Exclude already-completed tasks
+        active_tasks = [t for t in self.owner.get_all_tasks() if not t.completed]
+        mandatory, optional = self._separate_mandatory(active_tasks)
 
-        # Always schedule mandatory tasks regardless of budget
         for task in mandatory:
             plan.add_task(task)
             budget -= task.duration_minutes
 
-        # Sort optional tasks and fill remaining budget
         sorted_optional = self.sort_by_priority(optional)
         scheduled, skipped = self.filter_by_time(sorted_optional, budget)
 
@@ -154,8 +170,49 @@ class Scheduler:
         """Sort tasks high-to-low priority, with preferred_time_of_day as tiebreaker."""
         return sorted(
             tasks,
-            key=lambda t: (
-                -PRIORITY_RANK[t.priority],
-                TIME_OF_DAY_RANK[t.preferred_time_of_day],
-            ),
+            key=lambda t: (-PRIORITY_RANK[t.priority], TIME_OF_DAY_RANK[t.preferred_time_of_day]),
         )
+
+    def sort_by_time(self, tasks: list[Task]) -> list[Task]:
+        """Sort tasks by preferred_time_of_day (morning → afternoon → evening → any)."""
+        return sorted(tasks, key=lambda t: TIME_OF_DAY_RANK[t.preferred_time_of_day])
+
+    def filter_tasks(
+        self,
+        *,
+        pet_name: str | None = None,
+        completed: bool | None = None,
+    ) -> list[Task]:
+        """Return tasks filtered by pet name and/or completion status."""
+        results = []
+        for pet in self.owner.pets:
+            if pet_name is not None and pet.name != pet_name:
+                continue
+            for task in pet.tasks:
+                if completed is not None and task.completed != completed:
+                    continue
+                results.append(task)
+        return results
+
+    def advance_recurring(self, pet: Pet, task: Task) -> Task | None:
+        """Mark a task complete and, if recurring, register the next occurrence on the pet."""
+        next_task = task.mark_complete()
+        if next_task is not None:
+            pet.add_task(next_task)
+        return next_task
+
+    def detect_conflicts(self) -> list[str]:
+        """Return warning strings for tasks that share the same pet and time-of-day slot."""
+        warnings = []
+        for pet in self.owner.pets:
+            slots: dict[str, list[Task]] = defaultdict(list)
+            for task in pet.tasks:
+                if task.preferred_time_of_day != "any":
+                    slots[task.preferred_time_of_day].append(task)
+            for slot, slot_tasks in slots.items():
+                if len(slot_tasks) > 1:
+                    names = ", ".join(t.title for t in slot_tasks)
+                    warnings.append(
+                        f"Conflict [{pet.name}] {slot} slot: {names}"
+                    )
+        return warnings

@@ -32,6 +32,15 @@ source .venv/bin/activate  # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
+## Smarter Scheduling
+
+Beyond the basic priority-and-time-budget scheduler, the system includes four additional algorithms:
+
+- **Sort by time of day** — `Scheduler.sort_by_time()` orders any task list morning → afternoon → evening → any, so the plan reads in natural daily order.
+- **Filter by pet / status** — `Scheduler.filter_tasks(pet_name=, completed=)` lets you query tasks for a specific pet or see only pending/completed items.
+- **Recurring task advancement** — `Task.mark_complete()` returns a new `Task` instance due on the next occurrence (today + 1 day for daily, + 7 days for weekly). `Scheduler.advance_recurring()` marks the task and registers the next one on the pet automatically.
+- **Conflict detection** — `Scheduler.detect_conflicts()` warns when two or more tasks for the same pet share the same time-of-day slot (e.g., two "morning" tasks). Returns warning strings rather than raising exceptions so the app can surface them without crashing.
+
 ### Suggested workflow
 
 1. Read the scenario carefully and identify requirements and edge cases.
