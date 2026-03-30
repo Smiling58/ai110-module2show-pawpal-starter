@@ -57,13 +57,26 @@ This is a reasonable tradeoff for this scenario because tasks don't have fixed s
 
 **a. How you used AI**
 
-- How did you use AI tools during this project (for example: design brainstorming, debugging, refactoring)?
-- What kinds of prompts or questions were most helpful?
+AI tools were used across every phase of the project, but in different roles at each stage:
+
+- **Design brainstorming (Phase 1):** Used Claude to stress-test the UML before writing any code — asking "what edge cases would break this design?" surfaced the `_separate_mandatory()` gap and the `total_duration` stored-field problem before a single line was implemented. This was the highest-leverage use: catching design flaws early costs almost nothing; finding them after implementation is expensive.
+
+- **Test planning (Phase 3):** Used `#codebase` context to generate a comprehensive test plan, asking specifically about happy paths and edge cases for a pet scheduler with sorting and recurring tasks. The most useful prompts were *specific and scenario-grounded* — "a pet with no tasks" and "two tasks at the exact same time" produced concrete, actionable test cases rather than generic advice.
+
+- **Test implementation:** Used the test plan as a spec and had AI draft the test functions. The factory helper (`make_task(**overrides)`) and `make_owner()` patterns came from this step and made the test suite significantly more readable.
+
+- **UI upgrade (Phase 4):** Used AI to identify which Scheduler methods were not yet surfaced in the UI — `sort_by_time()`, `detect_conflicts()`, and the `frequency` field were all present in the backend but invisible to users until this pass.
+
+The most effective prompting pattern throughout: **give the AI the current file as context, describe the constraint or invariant you care about, and ask it to find what's missing** — rather than asking it to generate code from scratch.
 
 **b. Judgment and verification**
 
-- Describe one moment where you did not accept an AI suggestion as-is.
-- How did you evaluate or verify what the AI suggested?
+During test generation, AI initially suggested asserting on the *exact string output* of `DailyPlan.explain()` — for example, checking that the explanation contained the substring `"included: mandatory"`. This was rejected for two reasons:
+
+1. **Brittleness:** String-matching tests break whenever wording changes, even if the logic is still correct. They test presentation, not behavior.
+2. **Wrong layer:** The test suite's job is to verify scheduling decisions (what got scheduled and why), not to lock in the English wording of the explanation text.
+
+The replacement approach was to assert on the *data* — check `plan.scheduled_tasks` and `plan.skipped_tasks` directly, verify task titles are in the right list, and trust `explain()` to format whatever is in those lists. This kept the tests focused on the invariants that actually matter for correctness.
 
 ---
 
@@ -71,13 +84,24 @@ This is a reasonable tradeoff for this scenario because tasks don't have fixed s
 
 **a. What you tested**
 
-- What behaviors did you test?
-- Why were these tests important?
+The 23-test suite covers five areas:
+
+1. **Recurrence logic** — `daily` tasks produce a next occurrence due tomorrow, `weekly` due in 7 days, `as needed` returns `None`. `advance_recurring()` appends the new task to the pet and does not append for non-recurring tasks. These are critical because a bug here silently drops recurring care (e.g., daily medication) from future plans.
+
+2. **Sorting correctness** — `sort_by_priority()` orders `high → medium → low` with time-of-day as tiebreaker; `sort_by_time()` orders `morning → afternoon → evening → any`. Incorrect sorting would cause low-priority tasks to crowd out high-priority ones.
+
+3. **Conflict detection** — Duplicate time slots on the same pet trigger a warning; `any`-time tasks never conflict; conflicts do not cross pets. Conflict detection is user-facing — a false positive would alarm owners unnecessarily; a false negative would miss a real crowding problem.
+
+4. **Scheduling happy paths** — All tasks fit when budget is sufficient; mandatory tasks appear even when they bust the budget; completed tasks are excluded from plans.
+
+5. **Scheduling edge cases** — Zero-budget plans, pets with no tasks, owners with no pets, and oversized optional tasks all produce valid (empty or partial) plans rather than crashes.
 
 **b. Confidence**
 
-- How confident are you that your scheduler works correctly?
-- What edge cases would you test next if you had more time?
+★★★★☆ (4 / 5). All 23 tests pass and cover the core invariants. The remaining uncertainty is in two areas:
+
+- **Greedy packing is order-dependent.** If two tasks both fit individually but not together, which one gets scheduled depends on insertion order — not just priority. A future test could verify that the greedy algorithm's first-fit behavior is intentional and documented.
+- **No UI-layer tests.** The Streamlit app is tested only by running it manually. Automated tests for the UI (e.g., with `streamlit-testing-library`) would close this gap.
 
 ---
 
@@ -85,12 +109,18 @@ This is a reasonable tradeoff for this scenario because tasks don't have fixed s
 
 **a. What went well**
 
-- What part of this project are you most satisfied with?
+The clearest win was the **separation between data, logic, and presentation**. `Task`, `Pet`, and `Owner` hold state; `Scheduler` contains all the algorithms; `DailyPlan` holds results and explains them; `app.py` only calls into those layers without reimplementing any logic. This made it straightforward to upgrade the UI in Phase 4 — adding conflict warnings and chronological sorting required only two new method calls in `app.py` because the methods already existed and were tested in the backend. When the layers are clean, improvements are additive rather than surgical.
 
 **b. What you would improve**
 
-- If you had another iteration, what would you improve or redesign?
+Two things stand out for a next iteration:
+
+1. **Replace the greedy packer with a smarter algorithm.** The current first-fit greedy approach can leave gaps: if a 30-minute task comes before two 20-minute tasks and the budget is 45 minutes, the 30-minute task blocks both 20-minute tasks even though the two smaller ones would fit perfectly. A simple knapsack or best-fit algorithm would schedule more care within the same time budget.
+
+2. **Expose recurring task advancement in the UI.** The backend has `Scheduler.advance_recurring()` fully implemented and tested, but there is no button in `app.py` to mark a task complete and trigger the next recurrence. This is the most useful daily interaction for a pet owner — it should be the first UI feature added in the next sprint.
 
 **c. Key takeaway**
 
-- What is one important thing you learned about designing systems or working with AI on this project?
+The most important lesson from this project is that **AI works best when the architect has already made the hard decisions.** When the class boundaries were fuzzy (early Phase 1), AI suggestions were inconsistent — sometimes putting logic in `Owner`, sometimes in `Scheduler`, sometimes proposing new classes. Once the invariants were explicit ("mandatory tasks are never dropped," "conflict detection is a warning not a block," "`DailyPlan` is read-only output"), AI could fill in implementations reliably because it had a clear spec to target.
+
+The lead architect's job when working with AI is not to write every line — it is to define the constraints that every line must satisfy. AI is a very fast implementation engine; the human supplies the requirements, the invariants, and the judgment about when a suggestion violates them. Keeping those two roles distinct — and not letting AI make architectural decisions by default — is what makes the collaboration produce clean, maintainable code rather than a patchwork of plausible-looking suggestions.
